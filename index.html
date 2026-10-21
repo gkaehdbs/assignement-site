@@ -13,15 +13,18 @@
         h1 { color: #333; margin-top: 0; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
-        input[type="text"], textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        input[type="text"], input[type="file"], textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
         textarea { height: 120px; resize: vertical; }
         button { width: 100%; padding: 12px; background-color: #4F46E5; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
         button:hover { background-color: #4338CA; }
+        button:disabled { background-color: #a5a6f6; cursor: not-allowed; }
         .list-section { margin-top: 40px; border-top: 2px solid #eee; padding-top: 20px; }
         .card { background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 12px; }
         .card-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; color: #333; }
         .card-date { font-size: 12px; color: #888; }
-        .card-body { font-size: 14px; color: #444; white-space: pre-wrap; }
+        .card-body { font-size: 14px; color: #444; white-space: pre-wrap; margin-bottom: 8px; }
+        .file-link { display: inline-block; padding: 6px 12px; background: #eef2ff; color: #4F46E5; text-decoration: none; border-radius: 4px; font-size: 13px; font-weight: bold; }
+        .file-link:hover { background: #e0e7ff; }
     </style>
 </head>
 <body>
@@ -38,10 +41,14 @@
             <input type="text" id="title" placeholder="과제 제목을 입력하세요" required>
         </div>
         <div class="form-group">
-            <label for="content">과제 내용 / 링크</label>
-            <textarea id="content" placeholder="과제 내용을 적거나 링크를 첨부하세요" required></textarea>
+            <label for="content">과제 내용 / 설명</label>
+            <textarea id="content" placeholder="과제 내용을 적으세요" required></textarea>
         </div>
-        <button type="submit">과제 제출하기</button>
+        <div class="form-group">
+            <label for="fileInput">파일 첨부 (선택사항)</label>
+            <input type="file" id="fileInput">
+        </div>
+        <button type="submit" id="submitBtn">과제 제출하기</button>
     </form>
 
     <div class="list-section">
@@ -51,14 +58,13 @@
 </div>
 
 <script>
-    // ⚠️ 아래 두 항목을 Supabase의 본인 정보로 교체하세요!
-    const SUPABASE_URL = 'wgsknzweqyikbhsabsbb';
+    const SUPABASE_URL = 'https://wgsknzweqyikbhsabsbb.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_K7S-wQ0RWu-3cRzseeaAhA_Hsbc25GB';
 
     const { createClient } = supabase;
     const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // 과제 목록 불러오기 함수
+    // 과제 목록 불러오기
     async function loadAssignments() {
         const listDiv = document.getElementById('assignmentList');
         const { data, error } = await db
@@ -82,40 +88,78 @@
             const date = new Date(item.created_at).toLocaleString('ko-KR');
             const card = document.createElement('div');
             card.className = 'card';
+            
+            let fileHtml = '';
+            if (item.file_url) {
+                fileHtml = `<a href="${item.file_url}" target="_blank" class="file-link">📎 첨부파일 다운로드 / 보기</a>`;
+            }
+
             card.innerHTML = `
                 <div class="card-header">
                     <span>${item.title} (${item.student_name})</span>
                     <span class="card-date">${date}</span>
                 </div>
                 <div class="card-body">${item.content}</div>
+                ${fileHtml}
             `;
             listDiv.appendChild(card);
         });
     }
 
-    // 과제 제출 함수
+    // 과제 및 파일 제출
     document.getElementById('assignmentForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerText = '업로드 중...';
+
         const student_name = document.getElementById('studentName').value;
         const title = document.getElementById('title').value;
         const content = document.getElementById('content').value;
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
 
-        const { error } = await db
-            .from('assignments')
-            .insert([{ student_name, title, content }]);
+        let file_url = null;
 
-        if (error) {
-            alert('과제 제출에 실패했습니다.');
-            console.error(error);
-        } else {
+        try {
+            if (file) {
+                const fileExt = file.name.split('.').pop();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+                const filePath = `${fileName}`;
+
+                const { data: uploadData, error: uploadError } = await db.storage
+                    .from('assignments')
+                    .upload(filePath, file);
+
+                if (uploadError) throw uploadError;
+
+                const { data: urlData } = db.storage
+                    .from('assignments')
+                    .getPublicUrl(filePath);
+
+                file_url = urlData.publicUrl;
+            }
+
+            const { error: insertError } = await db
+                .from('assignments')
+                .insert([{ student_name, title, content, file_url }]);
+
+            if (insertError) throw insertError;
+
             alert('과제가 성공적으로 제출되었습니다!');
             document.getElementById('assignmentForm').reset();
             loadAssignments();
+
+        } catch (error) {
+            alert('과제 제출 중 오류가 발생했습니다.');
+            console.error(error);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerText = '과제 제출하기';
         }
     });
 
-    // 페이지 진입 시 목록 자동 불러오기
     loadAssignments();
 </script>
 
