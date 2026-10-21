@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>과제 제출 페이지</title>
+    <!-- Supabase 라이브러리 불러오기 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
+        body { background-color: #f4f6f8; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { max-width: 600px; width: 100%; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        h1 { color: #333; margin-top: 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="text"], textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        textarea { height: 120px; resize: vertical; }
+        button { width: 100%; padding: 12px; background-color: #4F46E5; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #4338CA; }
+        .list-section { margin-top: 40px; border-top: 2px solid #eee; padding-top: 20px; }
+        .card { background: #fafafa; border: 1px solid #eee; padding: 15px; border-radius: 8px; margin-bottom: 12px; }
+        .card-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; color: #333; }
+        .card-date { font-size: 12px; color: #888; }
+        .card-body { font-size: 14px; color: #444; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📝 과제 제출하기</h1>
+    <form id="assignmentForm">
+        <div class="form-group">
+            <label for="studentName">이름 (학번)</label>
+            <input type="text" id="studentName" placeholder="예: 홍길동 (10101)" required>
+        </div>
+        <div class="form-group">
+            <label for="title">과제 제목</label>
+            <input type="text" id="title" placeholder="과제 제목을 입력하세요" required>
+        </div>
+        <div class="form-group">
+            <label for="content">과제 내용 / 링크</label>
+            <textarea id="content" placeholder="과제 내용을 적거나 링크를 첨부하세요" required></textarea>
+        </div>
+        <button type="submit">과제 제출하기</button>
+    </form>
+
+    <div class="list-section">
+        <h2>📋 제출된 과제 목록</h2>
+        <div id="assignmentList">불러오는 중...</div>
+    </div>
+</div>
+
+<script>
+    // ⚠️ 아래 두 항목을 Supabase의 본인 정보로 교체하세요!
+    const SUPABASE_URL = 'wgsknzweqyikbhsabsbb';
+    const SUPABASE_KEY = 'sb_publishable_K7S-wQ0RWu-3cRzseeaAhA_Hsbc25GB';
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // 과제 목록 불러오기 함수
+    async function loadAssignments() {
+        const listDiv = document.getElementById('assignmentList');
+        const { data, error } = await db
+            .from('assignments')
+            .select('*')
+            .order('id', { ascending: false });
+
+        if (error) {
+            listDiv.innerHTML = '<p style="color:red;">목록을 불러오는 데 실패했습니다.</p>';
+            console.error(error);
+            return;
+        }
+
+        if (data.length === 0) {
+            listDiv.innerHTML = '<p>아직 제출된 과제가 없습니다.</p>';
+            return;
+        }
+
+        listDiv.innerHTML = '';
+        data.forEach(item => {
+            const date = new Date(item.created_at).toLocaleString('ko-KR');
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <div class="card-header">
+                    <span>${item.title} (${item.student_name})</span>
+                    <span class="card-date">${date}</span>
+                </div>
+                <div class="card-body">${item.content}</div>
+            `;
+            listDiv.appendChild(card);
+        });
+    }
+
+    // 과제 제출 함수
+    document.getElementById('assignmentForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const student_name = document.getElementById('studentName').value;
+        const title = document.getElementById('title').value;
+        const content = document.getElementById('content').value;
+
+        const { error } = await db
+            .from('assignments')
+            .insert([{ student_name, title, content }]);
+
+        if (error) {
+            alert('과제 제출에 실패했습니다.');
+            console.error(error);
+        } else {
+            alert('과제가 성공적으로 제출되었습니다!');
+            document.getElementById('assignmentForm').reset();
+            loadAssignments();
+        }
+    });
+
+    // 페이지 진입 시 목록 자동 불러오기
+    loadAssignments();
+</script>
+
+</body>
+</html>
